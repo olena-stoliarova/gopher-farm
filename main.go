@@ -40,65 +40,64 @@ var inputJson = `{
 }`
 
 type Farm struct {
-	Gophers []Gopher `json:"gophers"`
-	TotalFood int `json:"totalFood"`
-	mu sync.Mutex
+	Gophers   []Gopher `json:"gophers"`
+	TotalFood int      `json:"totalFood"`
+	sync.Mutex
+}
+
+func (f *Farm) eatFood(gopher *Gopher) error {
+	f.Lock()
+	defer f.Unlock()
+
+	if f.TotalFood < gopher.Eat {
+		log.Printf("gopher %s wants to eat %v food unit(s) but there's not enough food!", gopher.Name, gopher.Eat)
+		return errors.New("there's not enough food")
+	}
+
+	f.TotalFood -= gopher.Eat
+	log.Printf("gopher %s eats %v food unit(s). %v food unit(s) left.", gopher.Name, gopher.Eat, f.TotalFood)
+	return nil
 }
 
 type Gopher struct {
-	Name string `json:"name"`
+	Name  string        `json:"name"`
 	Sleep time.Duration `json:"sleep"`
-	Eat int `json:"eat"`
+	Eat   int           `json:"eat"`
 }
-func (gopher *Gopher) gopherLive(farm *Farm, wg *sync.WaitGroup, messages chan string) {
-	defer wg.Done()
+
+func (gopher *Gopher) gopherLive(farm *Farm, messages chan string) {
 	for {
 		time.Sleep(time.Second * gopher.Sleep)
-		err := farm.eatFood(gopher)
-		if err != nil {
+		if err := farm.eatFood(gopher); err != nil {
 			messages <- fmt.Sprintf("gopher %s dies. So said!", gopher.Name)
 			return
 		}
 	}
 }
 
-func (f *Farm) eatFood(gopher *Gopher) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.TotalFood < gopher.Eat {
-		log.Printf("gopher %s wants to eat %v food unit(s) but there's not enough food!", gopher.Name, gopher.Eat)
-		return errors.New("there's not enough food")
-	}
-	f.TotalFood = f.TotalFood - gopher.Eat
-	log.Printf("gopher %s eats %v food unit(s). %v food unit(s) left.", gopher.Name, gopher.Eat, f.TotalFood)
-	return nil
-}
-
-
-func main()  {
+func main() {
 	gopherFarm := &Farm{}
-	err := json.Unmarshal([]byte(inputJson), gopherFarm)
-	if err != nil {
+	if err := json.Unmarshal([]byte(inputJson), &gopherFarm); err != nil {
 		log.Fatal("cannot unmarshal: ", err)
 	}
 
 	messages := make(chan string)
-	wg := new(sync.WaitGroup)
 
-	for i := range(gopherFarm.Gophers){
-		wg.Add(1)
-		log.Printf("gopher %s joins the farm!", gopherFarm.Gophers[i].Name)
-		go (&gopherFarm.Gophers[i]).gopherLive(gopherFarm, wg, messages)
+	for _, gopher := range gopherFarm.Gophers {
+		log.Printf("gopher %s joins the farm!", gopher.Name)
+		go gopher.gopherLive(gopherFarm, messages)
 	}
 
-	go func(wg *sync.WaitGroup, messages chan string) {
-		log.Println("waiting")
-		wg.Wait()
-		log.Println("done waiting")
-		close(messages)
-	}(wg, messages)
+	log.Println("waiting")
 
-	for msg := range messages {
+	for range gopherFarm.Gophers {
+		msg, ok := <-messages
+		if !ok {
+			log.Fatal("channel was closed")
+		}
+
 		log.Println(msg)
 	}
+
+	log.Println("done waiting")
 }

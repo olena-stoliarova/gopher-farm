@@ -83,9 +83,9 @@ func main() {
 
 	messages := make(chan string)
 
-	for _, gopher := range gopherFarm.Gophers {
+	for i, gopher := range gopherFarm.Gophers {
 		log.Printf("gopher %s joins the farm!", gopher.Name)
-		go gopher.gopherLive(gopherFarm, messages)
+		go gopherFarm.Gophers[i].gopherLive(gopherFarm, messages)
 	}
 
 	log.Println("waiting")
